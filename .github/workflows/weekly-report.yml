@@ -31,7 +31,7 @@ jobs:
         
         # GitHub API로 커밋 정보 가져오기 (에러 처리 추가)
         echo "Fetching commits from GitHub API..."
-        HTTP_STATUS=$(curl -s -w "%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+        HTTP_STATUS=$(curl -s -w "%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_PAT }}" \
           "https://api.github.com/repos/$REPO/commits?since=$SINCE&per_page=100" \
           -o commits.json)
         
