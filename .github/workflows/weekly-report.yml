@@ -21,7 +21,7 @@ jobs:
       run: |
         # GitHub API로 pub-client 저장소 커밋 정보 가져오기
         REPO="devsisters/pub-client"
-        SINCE=$(date -d '7 days ago' --iso-8601)
+        SINCE=$(date -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')
         
         echo "# 📊 pub-client 주간 Git 커밋 리포트" > report.md
         echo "**저장소:** https://github.com/$REPO" >> report.md
@@ -29,29 +29,54 @@ jobs:
         echo "**기간:** 지난 7일" >> report.md
         echo "" >> report.md
         
-        # GitHub API로 커밋 정보 가져오기
-        curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/$REPO/commits?since=$SINCE&per_page=100" > commits.json
+        # GitHub API로 커밋 정보 가져오기 (에러 처리 추가)
+        echo "Fetching commits from GitHub API..."
+        HTTP_STATUS=$(curl -s -w "%{http_code}" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/$REPO/commits?since=$SINCE&per_page=100" \
+          -o commits.json)
+        
+        if [ $HTTP_STATUS -ne 200 ]; then
+          echo "GitHub API 호출 실패 (HTTP $HTTP_STATUS)"
+          echo "빈 커밋 목록으로 처리합니다."
+          echo "[]" > commits.json
+        fi
+        
+        # JSON 파일 검증
+        if ! jq empty commits.json 2>/dev/null; then
+          echo "Invalid JSON received, creating empty report"
+          echo "[]" > commits.json
+        fi
         
         # 커밋 수 계산
         COMMIT_COUNT=$(jq length commits.json)
         echo "## 📊 커밋 통계" >> report.md
         echo "- 총 커밋 수: $COMMIT_COUNT" >> report.md
         
-        # 개발자별 커밋 수 계산
-        echo "- 활동한 개발자 수: $(jq -r '.[].author.login' commits.json | sort | uniq | wc -l)" >> report.md
-        echo "" >> report.md
-        
-        # 개발자별 활동
-        echo "## 👥 개발자별 활동" >> report.md
-        jq -r '.[].author.login' commits.json | sort | uniq -c | sort -nr | while read count author; do
-          echo "- $author: $count 커밋" >> report.md
-        done
-        echo "" >> report.md
-        
-        # 상세 커밋 로그
-        echo "## 📝 상세 커밋 내역" >> report.md
-        jq -r '.[] | "- **\(.sha[0:7])** (\(.author.login), \(.commit.author.date)): \(.commit.message | split("\n")[0])"' commits.json >> report.md
+        if [ $COMMIT_COUNT -gt 0 ]; then
+          # 개발자별 커밋 수 계산
+          AUTHOR_COUNT=$(jq -r '.[].author.login // "unknown"' commits.json | sort | uniq | wc -l)
+          echo "- 활동한 개발자 수: $AUTHOR_COUNT" >> report.md
+          echo "" >> report.md
+          
+          # 개발자별 활동
+          echo "## 👥 개발자별 활동" >> report.md
+          jq -r '.[].author.login // "unknown"' commits.json | sort | uniq -c | sort -nr | while read count author; do
+            echo "- $author: $count 커밋" >> report.md
+          done
+          echo "" >> report.md
+          
+          # 상세 커밋 로그
+          echo "## 📝 상세 커밋 내역" >> report.md
+          jq -r '.[] | "- **\(.sha[0:7])** (\(.author.login // "unknown"), \(.commit.author.date)): \(.commit.message | split("\n")[0])"' commits.json >> report.md
+        else
+          echo "- 활동한 개발자 수: 0" >> report.md
+          echo "" >> report.md
+          echo "## 👥 개발자별 활동" >> report.md
+          echo "지난 7일간 커밋 활동이 없었습니다." >> report.md
+          echo "" >> report.md
+          echo "## 📝 상세 커밋 내역" >> report.md
+          echo "커밋이 없습니다." >> report.md
+        fi
     
     - name: Send Email Report
       uses: dawidd6/action-send-mail@v3
