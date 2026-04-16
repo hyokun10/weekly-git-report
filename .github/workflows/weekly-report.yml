@@ -16,34 +16,42 @@ jobs:
       with:
         fetch-depth: 0 # 전체 히스토리 가져오기
     
-    - name: Generate Weekly Report
+    - name: Generate Weekly Report for pub-client
       id: report
       run: |
-        echo "# 주간 Git 커밋 리포트" > report.md
-        echo "생성일: $(date '+%Y-%m-%d %H:%M:%S')" >> report.md
+        # GitHub API로 pub-client 저장소 커밋 정보 가져오기
+        REPO="devsisters/pub-client"
+        SINCE=$(date -d '7 days ago' --iso-8601)
+        
+        echo "# 📊 pub-client 주간 Git 커밋 리포트" > report.md
+        echo "**저장소:** https://github.com/$REPO" >> report.md
+        echo "**생성일:** $(date '+%Y-%m-%d %H:%M:%S')" >> report.md
+        echo "**기간:** 지난 7일" >> report.md
         echo "" >> report.md
         
-        # 지난 7일간의 커밋 통계
+        # GitHub API로 커밋 정보 가져오기
+        curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/$REPO/commits?since=$SINCE&per_page=100" > commits.json
+        
+        # 커밋 수 계산
+        COMMIT_COUNT=$(jq length commits.json)
         echo "## 📊 커밋 통계" >> report.md
-        echo "- 총 커밋 수: $(git log --since='7 days ago' --oneline | wc -l)" >> report.md
-        echo "- 활동한 개발자 수: $(git log --since='7 days ago' --format='%an' | sort | uniq | wc -l)" >> report.md
+        echo "- 총 커밋 수: $COMMIT_COUNT" >> report.md
+        
+        # 개발자별 커밋 수 계산
+        echo "- 활동한 개발자 수: $(jq -r '.[].author.login' commits.json | sort | uniq | wc -l)" >> report.md
         echo "" >> report.md
         
-        # 개발자별 커밋 수
+        # 개발자별 활동
         echo "## 👥 개발자별 활동" >> report.md
-        git log --since='7 days ago' --format='%an' | sort | uniq -c | sort -nr | while read count author; do
+        jq -r '.[].author.login' commits.json | sort | uniq -c | sort -nr | while read count author; do
           echo "- $author: $count 커밋" >> report.md
         done
         echo "" >> report.md
         
         # 상세 커밋 로그
         echo "## 📝 상세 커밋 내역" >> report.md
-        git log --since='7 days ago' --pretty=format:'- **%h** (%an, %ar): %s' --reverse >> report.md
-        
-        # 파일 변경 통계
-        echo "" >> report.md
-        echo "## 📁 파일 변경 통계" >> report.md
-        git log --since='7 days ago' --stat --oneline | tail -20 >> report.md
+        jq -r '.[] | "- **\(.sha[0:7])** (\(.author.login), \(.commit.author.date)): \(.commit.message | split("\n")[0])"' commits.json >> report.md
     
     - name: Send Email Report
       uses: dawidd6/action-send-mail@v3
@@ -52,7 +60,7 @@ jobs:
         server_port: 465
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "[Git Report] 주간 커밋 리포트 - ${{ github.repository }}"
+        subject: "[Git Report] pub-client 주간 커밋 리포트"
         body: file://report.md
         to: ${{ secrets.EMAIL_TO }}
         from: ${{ secrets.EMAIL_FROM }}
