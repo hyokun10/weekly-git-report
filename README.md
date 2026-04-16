@@ -50,3 +50,8 @@ GitHub Actions 탭에서 "Weekly Git Report" 워크플로우를 찾아 "Run work
 - GitHub 저장소
 - Gmail 계정 (또는 SMTP 서버)
 - GitHub Actions 활성화
+
+## 🚀 사용법
+
+1. GitHub에서 Actions 탭 확인
+2. "Weekly Git Report" 워크플로우에서 "Run workflow" 클릭
