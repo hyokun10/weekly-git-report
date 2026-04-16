@@ -1,0 +1,60 @@
+name: Weekly Git Report
+
+on:
+  schedule:
+    # 매주 월요일 오전 9시 (한국시간) - UTC 기준 일요일 자정
+    - cron: '0 0 * * SUN'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # 전체 히스토리 가져오기
+    
+    - name: Generate Weekly Report
+      id: report
+      run: |
+        echo "# 주간 Git 커밋 리포트" > report.md
+        echo "생성일: $(date '+%Y-%m-%d %H:%M:%S')" >> report.md
+        echo "" >> report.md
+        
+        # 지난 7일간의 커밋 통계
+        echo "## 📊 커밋 통계" >> report.md
+        echo "- 총 커밋 수: $(git log --since='7 days ago' --oneline | wc -l)" >> report.md
+        echo "- 활동한 개발자 수: $(git log --since='7 days ago' --format='%an' | sort | uniq | wc -l)" >> report.md
+        echo "" >> report.md
+        
+        # 개발자별 커밋 수
+        echo "## 👥 개발자별 활동" >> report.md
+        git log --since='7 days ago' --format='%an' | sort | uniq -c | sort -nr | while read count author; do
+          echo "- $author: $count 커밋" >> report.md
+        done
+        echo "" >> report.md
+        
+        # 상세 커밋 로그
+        echo "## 📝 상세 커밋 내역" >> report.md
+        git log --since='7 days ago' --pretty=format:'- **%h** (%an, %ar): %s' --reverse >> report.md
+        
+        # 파일 변경 통계
+        echo "" >> report.md
+        echo "## 📁 파일 변경 통계" >> report.md
+        git log --since='7 days ago' --stat --oneline | tail -20 >> report.md
+    
+    - name: Send Email Report
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 465
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: "[Git Report] 주간 커밋 리포트 - ${{ github.repository }}"
+        body: file://report.md
+        to: ${{ secrets.EMAIL_TO }}
+        from: ${{ secrets.EMAIL_FROM }}
+        content_type: text/html
+        convert_markdown: true
